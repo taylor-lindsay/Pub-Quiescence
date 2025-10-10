@@ -1,0 +1,9 @@
+
+    # Ignore the 'build' directory
+    build/
+
+    # Ignore a specific file
+    Temp_Data/Buoy_temp_data.csv
+
+    # Ignore everything in the 'temp' directory but not the directory itself
+    Temp_Data/temp_buoys/
