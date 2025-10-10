@@ -292,7 +292,7 @@ raw$rating <- factor(raw$rating, levels = c(0, 1, 2, 3), ordered = TRUE)
 str(raw$rating)
 
 # Run model
-model <- polr(rating ~ depth + ecotype + mean_WTMP + ecotype * mean_WTMP + ecotype * depth + depth * mean_WTMP + depth * ecotype * mean_WTMP, 
+model <- polr(rating ~ depth + ecotype + mean_WTMP, #+ ecotype * mean_WTMP + ecotype * depth + depth * mean_WTMP + depth * ecotype * mean_WTMP, 
               data = raw, Hess = TRUE)
 
 # Get summary with p-values
