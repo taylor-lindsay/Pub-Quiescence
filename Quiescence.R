@@ -74,11 +74,11 @@ NOAA_2025 <- buoy_daily %>%
   filter(Site == "Newport") %>%
   mutate(depth = "temp_surface") %>%
   ungroup() %>%
-  dplyr::select(month_day, depth, mean_WTMP)
+  dplyr::select(month_day, depth, mean_WTMP) 
 
 # Combine data 
 combined2 <- bind_rows(hobo_temp_mean, NOAA_2025)
-combined2 <- combined2 %>% filter(month_day < "05-01") 
+combined2 <- combined2 %>% filter(month_day < "04-25") %>% filter(month_day > "01-08") 
 
 combined2$depth<- factor(combined2$depth, levels = c("temp_surface", "temp_shallow", "temp_deep"))
 
@@ -131,108 +131,10 @@ temp_boxplot
 g_treat1 <- plot_grid(temp_boxplot, temps_line,
                       ncol = 2, align = "h", rel_widths = c(1, 3),
                       labels = c("A", "B"), label_size = 12, label_fontface = "bold",  label_x = 0, label_y = 1)
-ggsave("FIG1_enviro_2025.jpg", plot = g_treat1, path = 'FIGURES/', width = 10, height = 7)
-
-# FIG 2. 3 year comparison ---------------------------------------------------
-
-#
-winter_dates <- buoy_daily %>%
-  filter(
-    # For YY 2013, 2020, 2024: include Oct 1 - Dec 31
-    (month_day >= "11-01" & month_day <= "12-31") |
-      # For YY 2014, 2021, 2024: include Jan 1 - May 30
-      (month_day >= "01-01" & month_day <= "06-10")
-  )
-
-winter_dates <- winter_dates %>%
-  mutate(
-    custom_day = case_when(
-      MM == 10 ~ DD,
-      MM == 11 ~ DD + 31,
-      MM == 12 ~ DD + 61,
-      MM == 1 ~ DD + 92,
-      MM == 2 ~ DD + 123,
-      MM == 3 ~ DD + 152,
-      MM == 4 ~ DD + 183,
-      MM == 5 ~ DD + 213,
-      MM == 6 ~ DD + 244,
-      TRUE ~ NA_real_ ))
-
-### FOCUS YEARS 
-
-# daily water temp means 
-yrs_clean_daily <- winter_dates %>%
-  filter(
-    (YY %in% c(2014, 2013, 2024, 2025) & Site == "Newport") |
-      (YY %in% c(2020, 2021) & Site == "WHOI")
-  )
-
-# pick relevant dates october 1 to june 30
-yrs_clean_daily <- yrs_clean_daily %>%
-  filter(
-    # For YY 2013, 2020, 2024: include Oct 1 - Dec 31
-    (YY %in% c(2013, 2020, 2024) & month_day >= "11-01" & month_day <= "12-31") |
-      # For YY 2014, 2021, 2024: include Jan 1 - May 30
-      (YY %in% c(2014, 2021, 2024) & month_day >= "01-01" & month_day <= "06-10")
-  )
-
-yrs_clean_daily <- yrs_clean_daily %>%
-  mutate(
-    yr_group = case_when(
-      YY %in% c(2013, 2014) ~ "2013-14 (RI)",
-      YY %in% c(2020, 2021) ~ "2020-21 (MA)", 
-      YY %in% c(2024, 2025) ~ "2024-25 (RI)",
-      TRUE ~ NA_character_  # For any other years not specified
-    )
-  ) %>% 
-  mutate(
-    WK = ((custom_day - 1) %/% 7) + 1,  # Create week bins
-    WK = ((WK - 1) * 7) + 1   )          # Convert to first day of each week
-
-# calculate weekly means 
-week_means <- yrs_clean_daily %>%
-  group_by(yr_group,WK) %>%
-  summarise(mean_WTMP = mean(mean_WTMP))  
-
-# pull first of the month labels for the graph 
-first_days <- yrs_clean_daily %>%
-  filter(DD == 1) %>%                # Select rows where day is 1
-  distinct(custom_day, month_day) %>% # Remove duplicates
-  arrange(custom_day)                 # Ensure proper order
-
-yrs_clean_daily$yr_group <- factor(yrs_clean_daily$yr_group, levels = c("2024-25 (RI)", "2020-21 (MA)", "2013-14 (RI)"))
-
-# PLOT!!!!! 
-annual_wb <- ggplot(yrs_clean_daily, aes(x = custom_day, y = mean_WTMP, color = yr_group)) +
-  geom_line(linewidth = 1) + 
- # geom_smooth(method = "loess", span=0.09, linewidth = 1.5) +
-  scale_x_continuous(breaks = first_days$custom_day, labels = first_days$month_day) +
-  scale_color_manual(values = c("2013-14 (RI)" = "#4A1A7BFF","2020-21 (MA)" = "#48D1CCFF","2024-25 (RI)" = "#D64B40FF")) + 
-  scale_fill_manual(values = c("2013-14 (RI)" = "#4A1A7BFF","2020-21 (MA)" = "#48D1CCFF","2024-25 (RI)" = "#D64B40FF")) + 
-  
-  geom_segment(aes(x = 71, xend = 189, y = 17, yend = 17), color = "#AA92E9FF", linewidth = 6, linetype = "solid", alpha = 0.02) + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
-  geom_segment(aes(x = 81, xend = 243, y = 17, yend = 17), color = "#4A1A7BFF", linewidth = 1, linetype = "dashed") + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
-  #geom_text(aes(x = "03-05", y = 22.5, label = "2014 (RI)"), color = "black", size=5, family = "sans", fontface = "plain", check_overlap = TRUE) +
-  geom_segment(aes(x = 78, xend = 182, y = 18, yend = 18), color = "#90FBF6FF", linewidth = 6, linetype = "solid", alpha = 0.02) + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
-  geom_segment(aes(x = 79, xend = 183, y = 18, yend = 18), color = "#18B1ACFF", linewidth = 1, linetype = "dashed") + # BROWN, 2021: Dec 18 - Mar 31 days 79 thru 183
-  #geom_text(aes(x = "03-05", y = 20.5, label = "2021 (MA)"), color = "black", size=5, family = "sans", fontface = "plain", check_overlap = TRUE) + 
-  geom_segment(aes(x = 106, xend = 168, y = 19, yend = 19), color = "#FF9F9FFF", linewidth = 6, linetype = "solid", alpha = 0.02) + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
-  geom_segment(aes(x = 135, xend = 178, y = 19, yend = 19), color = "#D64B40FF", linewidth = 1, linetype = "dashed") + # LINDSAY, 2025: Feb 12 - Mar 26 days 135 - 178
-  #geom_text(aes(x = "03-05", y = 18.5, label = "2025 (RI)"), color = "black", size=5, family = "sans", fontface = "plain", check_overlap = TRUE) + 
-  theme_bw() +
-  theme(legend.position = c(.85, .15), 
-        legend.background = element_rect(color = "black", fill = "white"),) + 
-  labs(x="Month & Day", y = "Surface Water Temperature (˚C)", color="Year", fill = "Year")  
-
-# graph daily water temp over many years 
-  
-annual_wb
-
-# save 
-ggsave("FIG2_enviro_yearsB.jpg", plot = annual_wb, path = 'FIGURES/', width = 6, height = 5)
+ggsave("FIG1_enviro_2025.jpg", plot = g_treat1, path = 'FIGURES/', width = 8, height = 6)
 
 
-# FIG 3. Quiescence Data -----------------------------------------------------------
+# FIG 2. Quiescence Data -----------------------------------------------------------
 
 # LOAD DATA 
 raw <- read.csv('Quiescence_raw.csv')
@@ -324,7 +226,7 @@ plot_quiescence <- plot_grid(plot2_ecotype, plot3_depth, labels = c("B", "C"),
 plot_quiescence2 <- plot_grid(plot1_all, plot_quiescence,  labels = c("A", ""),
                               ncol = 1)
 
-ggsave("FIG3_quiescence.jpg", plot = plot_quiescence2, path = 'FIGURES/', width = 5, height = 8)
+ggsave("FIG2_quiescence.jpg", plot = plot_quiescence2, path = 'FIGURES/', width = 5, height = 8)
 
 # STATS - Ordinal Quiescence -----------------------------------------------------------
 
@@ -408,6 +310,105 @@ exp(coef(model))
 # Compare against null model
 null_model <- polr(rating ~ 1, data = raw, Hess = TRUE)
 anova(null_model, model) # depth + ecotype is not more important than null 
+
+
+# FIG 3. 3 year comparison ---------------------------------------------------
+
+#
+winter_dates <- buoy_daily %>%
+  filter(
+    # For YY 2013, 2020, 2024: include Oct 1 - Dec 31
+    (month_day >= "11-01" & month_day <= "12-31") |
+      # For YY 2014, 2021, 2024: include Jan 1 - May 30
+      (month_day >= "01-01" & month_day <= "06-10")
+  )
+
+winter_dates <- winter_dates %>%
+  mutate(
+    custom_day = case_when(
+      MM == 10 ~ DD,
+      MM == 11 ~ DD + 31,
+      MM == 12 ~ DD + 61,
+      MM == 1 ~ DD + 92,
+      MM == 2 ~ DD + 123,
+      MM == 3 ~ DD + 152,
+      MM == 4 ~ DD + 183,
+      MM == 5 ~ DD + 213,
+      MM == 6 ~ DD + 244,
+      TRUE ~ NA_real_ ))
+
+### FOCUS YEARS 
+
+# daily water temp means 
+yrs_clean_daily <- winter_dates %>%
+  filter(
+    (YY %in% c(2014, 2013, 2024, 2025) & Site == "Newport") |
+      (YY %in% c(2020, 2021) & Site == "WHOI")
+  )
+
+# pick relevant dates october 1 to june 30
+yrs_clean_daily <- yrs_clean_daily %>%
+  filter(
+    # For YY 2013, 2020, 2024: include Oct 1 - Dec 31
+    (YY %in% c(2013, 2020, 2024) & month_day >= "11-01" & month_day <= "12-31") |
+      # For YY 2014, 2021, 2024: include Jan 1 - May 30
+      (YY %in% c(2014, 2021, 2024) & month_day >= "01-01" & month_day <= "06-10")
+  )
+
+yrs_clean_daily <- yrs_clean_daily %>%
+  mutate(
+    yr_group = case_when(
+      YY %in% c(2013, 2014) ~ "2013-14 (RI)",
+      YY %in% c(2020, 2021) ~ "2020-21 (MA)", 
+      YY %in% c(2024, 2025) ~ "2024-25 (RI)",
+      TRUE ~ NA_character_  # For any other years not specified
+    )
+  ) %>% 
+  mutate(
+    WK = ((custom_day - 1) %/% 7) + 1,  # Create week bins
+    WK = ((WK - 1) * 7) + 1   )          # Convert to first day of each week
+
+# calculate weekly means 
+week_means <- yrs_clean_daily %>%
+  group_by(yr_group,WK) %>%
+  summarise(mean_WTMP = mean(mean_WTMP))  
+
+# pull first of the month labels for the graph 
+first_days <- yrs_clean_daily %>%
+  filter(DD == 1) %>%                # Select rows where day is 1
+  distinct(custom_day, month_day) %>% # Remove duplicates
+  arrange(custom_day)                 # Ensure proper order
+
+yrs_clean_daily$yr_group <- factor(yrs_clean_daily$yr_group, levels = c("2024-25 (RI)", "2020-21 (MA)", "2013-14 (RI)"))
+
+# PLOT!!!!! 
+annual_wb <- ggplot(yrs_clean_daily, aes(x = custom_day, y = mean_WTMP, color = yr_group)) +
+  geom_line(linewidth = 1) + 
+  # geom_smooth(method = "loess", span=0.09, linewidth = 1.5) +
+  scale_x_continuous(breaks = first_days$custom_day, labels = first_days$month_day) +
+  scale_color_manual(values = c("2013-14 (RI)" = "#4A1A7BFF","2020-21 (MA)" = "#48D1CCFF","2024-25 (RI)" = "#D64B40FF")) + 
+  scale_fill_manual(values = c("2013-14 (RI)" = "#4A1A7BFF","2020-21 (MA)" = "#48D1CCFF","2024-25 (RI)" = "#D64B40FF")) + 
+  
+  geom_segment(aes(x = 71, xend = 189, y = 17, yend = 17), color = "#AA92E9FF", linewidth = 6, linetype = "solid", alpha = 0.02) + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
+  geom_segment(aes(x = 81, xend = 243, y = 17, yend = 17), color = "#4A1A7BFF", linewidth = 1, linetype = "dashed") + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
+  #geom_text(aes(x = "03-05", y = 22.5, label = "2014 (RI)"), color = "black", size=5, family = "sans", fontface = "plain", check_overlap = TRUE) +
+  geom_segment(aes(x = 78, xend = 182, y = 18, yend = 18), color = "#90FBF6FF", linewidth = 6, linetype = "solid", alpha = 0.02) + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
+  geom_segment(aes(x = 79, xend = 183, y = 18, yend = 18), color = "#18B1ACFF", linewidth = 1, linetype = "dashed") + # BROWN, 2021: Dec 18 - Mar 31 days 79 thru 183
+  #geom_text(aes(x = "03-05", y = 20.5, label = "2021 (MA)"), color = "black", size=5, family = "sans", fontface = "plain", check_overlap = TRUE) + 
+  geom_segment(aes(x = 106, xend = 168, y = 19, yend = 19), color = "#FF9F9FFF", linewidth = 6, linetype = "solid", alpha = 0.02) + # GRACE, 2014: Dec 20 - may 30 (estimates) days 81 through 243
+  geom_segment(aes(x = 135, xend = 178, y = 19, yend = 19), color = "#D64B40FF", linewidth = 1, linetype = "dashed") + # LINDSAY, 2025: Feb 12 - Mar 26 days 135 - 178
+  #geom_text(aes(x = "03-05", y = 18.5, label = "2025 (RI)"), color = "black", size=5, family = "sans", fontface = "plain", check_overlap = TRUE) + 
+  theme_bw() +
+  theme(legend.position = c(.85, .15), 
+        legend.background = element_rect(color = "black", fill = "white"),) + 
+  labs(x="Month & Day", y = "Surface Water Temperature (˚C)", color="Year", fill = "Year")  
+
+# graph daily water temp over many years 
+
+annual_wb
+
+# save 
+ggsave("FIG3_enviro_yearsB.jpg", plot = annual_wb, path = 'FIGURES/', width = 6, height = 5)
 
 # ? GAANT ------------------------------------------------------------------
 
