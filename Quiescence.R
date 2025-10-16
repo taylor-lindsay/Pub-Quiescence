@@ -25,6 +25,7 @@ library(hms)
 library(readr) # for reading txt file
 library(cowplot)
 library(MASS) # for ordinal stats 
+library(scales) # for ggplot scale sig figs 
 
 # BUOY Water Temp --------------------------------------------------------------
 
@@ -183,6 +184,34 @@ pres <- raw %>%
 
 pres$id <- factor(pres$id, levels = c("shallow_Sym","shallow_Apo", "deep_Sym", "deep_Apo"))
 
+# BY EVERTYTHING 
+pres_all <- pres %>%
+  group_by(Date, ecotype, depth_cat, sampling_day) %>%
+  summarise(percent_q = sum(pres_abs))
+
+# relabel facets 
+new_labels <- c("deep" = "Deep (11.5 m)","shallow" = "Shallow (6 m)")
+# reorder facets 
+pres_all$depth_cat <- factor(pres_all$depth_cat, levels = c("shallow", "deep"), ordered = TRUE)
+
+quies_all <- ggplot(pres_all, aes(x = Date, y = percent_q, color=ecotype)) + 
+  geom_point(size=3) +
+  scale_y_continuous(labels = label_number(accuracy = 1),
+                     limits = c(0,10)) + # Two decimal places
+  geom_line(aes(group=ecotype), linetype="dashed", linewidth=1) +
+  facet_wrap(~depth_cat, labeller = labeller(depth_cat = new_labels)) +
+  # Aesthetics 
+  scale_color_manual(values = c("#e4d2ba", "#8a6136"),
+                     labels = c("Apo" = "Aposymbiotic", "Sym" = "Symbiotic")) + 
+  theme_bw() +
+  labs(x="Date", y= "Number of Corals in Quiescence", color = "Ecotype") + 
+  #ylim(0,10) +
+  theme(legend.position = c(.75, .85), 
+        legend.background = element_rect(color = "black", fill = "white")) 
+
+ggsave("FIG2_quies_all.jpg", plot = quies_all, path = 'FIGURES/', width = 5, height = 4)
+
+
 # BY ECOTYPE
 pres_ecotype <- pres %>%
   group_by(Date, ecotype) %>%
@@ -282,6 +311,16 @@ ggplot(mean_pre_temps, aes(x=sampling_day, y=mean_WTMP, color=depth_cat, shape=s
 
 # add this data to the raw data
 raw <- full_join(raw, mean_7d)
+
+#### MAKE TEMP VS QUIESCENCE GRAPH 
+temp_quies <- full_join(mean_7d, pres_all)
+
+ggplot(temp_quies, aes(x = mean_WTMP, y = percent_q, color=ecotype)) +
+  geom_smooth(method="lm")+
+  geom_jitter(aes(shape = depth_cat), width = 0.05, height = 0.05) +
+  theme_bw()
+  #ylim(-0.2,7.5)
+
 
 ### ORDINAL STATS 
 
@@ -409,6 +448,49 @@ annual_wb
 
 # save 
 ggsave("FIG3_enviro_yearsB.jpg", plot = annual_wb, path = 'FIGURES/', width = 6, height = 5)
+
+### Try again 
+
+# generate dataframe for shaded regions 
+shade_data <- data.frame(
+  yr_group = c("2024-25 (RI)", "2020-21 (MA)", "2013-14 (RI)"), # Match your facet groups
+  xmin = c(106, 79, 71),     # Start days for shaded regions
+  xmax = c(168, 183, 189),     # End days for shaded regions
+  ymin = -Inf,                      # Extend to bottom of plot
+  ymax = Inf                        # Extend to top of plot
+)
+line_data <- data.frame(
+  yr_group = c("2024-25 (RI)", "2020-21 (MA)", "2013-14 (RI)"),
+  xstart = c(135, 78, 81),     # Start x position for each line
+  xend = c(178, 182, 243),     # End x position for each line
+  y = 15                       # y position (all at 15)
+)
+
+# reverse order 
+yrs_clean_daily$yr_group <- factor(yrs_clean_daily$yr_group, levels = c("2024-25 (RI)", "2020-21 (MA)", "2013-14 (RI)"))
+
+faceted_3yr <- ggplot(yrs_clean_daily, aes(x = custom_day, y = mean_WTMP)) +
+  # DATA 
+  geom_rect(data = shade_data, 
+            aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            fill = "grey", alpha = 0.5, inherit.aes = FALSE) +
+  geom_segment(data = line_data, 
+               aes(x = xstart, xend = xend, y = y, yend = y),
+               color = "blue", linewidth = 1, alpha = 0.7, linetype="dashed") +
+  geom_line(linewidth = 1) +
+  #AESTHETICS 
+  facet_wrap(~ yr_group, ncol = 1, scales = "free_x") +
+  theme_bw() +
+  labs(x = "Month & Day", y = "Surface Water Temperature (˚C)") +
+  theme(
+    strip.background = element_rect(fill = "white", color = "black"),
+    strip.text = element_text(face = "bold", size = 12)) +
+  scale_x_continuous(breaks = first_days$custom_day, labels = first_days$month_day)
+  
+faceted_3yr
+
+# save 
+ggsave("FIG3_enviro_3years.jpg", plot = faceted_3yr, path = 'FIGURES/', width = 5, height = 8)
 
 # ? GAANT ------------------------------------------------------------------
 
