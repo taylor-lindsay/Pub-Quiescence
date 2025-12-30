@@ -28,6 +28,11 @@ library(MASS) # for ordinal stats
 library(scales) # for ggplot scale sig figs 
 library(lme4)
 library("lmerTest")
+library(ggmap) #map
+library(ggspatial) #map
+library(grid) #map
+library(ggpmisc) #equation & pvalue 
+
 
 # DONE: BUOY Water Temp --------------------------------------------------------------
 
@@ -127,6 +132,28 @@ buoy <- long %>% filter(WTMP < 999)
 buoy_daily <- buoy %>%
   group_by(DD, MM, YY, month_day, Site, date) %>%
   summarise(mean_WTMP = mean(WTMP)) 
+
+# RELABEL FACETS 
+new_labels <- c("Newport" = "RI","WHOI" = "MA")
+
+# PLOT 20 YEARS
+plot_temp_long <- ggplot(buoy_daily, aes(x=date, y=mean_WTMP)) + 
+  geom_line() + 
+  geom_smooth(method = "lm") + 
+  facet_wrap(~Site, labeller = labeller(Site = new_labels)) +
+  theme_bw() + 
+  labs(x="Date", y="Mean Water Temperature (˚C)") +
+  stat_poly_eq(
+    formula = y ~ x,
+    aes(label = paste(after_stat(eq.label), after_stat(rr.label), 
+                      after_stat(p.value.label), sep = "~~~")),
+    label.x = "right",
+    label.y = "top",
+    size = 3  # Adjust size if needed
+  )
+
+# SAVE 
+ggsave("plot_temp_long.jpg", plot = plot_temp_long, path = 'FIGURES/', width = 7, height =6)
 
 # CREATE FILE FOR X AXIS LABELS  
 first_of_month <- unique(buoy_daily$month_day[grepl("-01$", buoy_daily$month_day)])
@@ -619,17 +646,11 @@ complete_data <- raw %>%
   drop_na()
 
 # RUN MODEL
-model_n <- polr(rating ~ depth + morphotype + mean_WTMP, #+ morphotype * mean_WTMP + morphotype * depth + depth * mean_WTMP + depth * morphotype * mean_WTMP, 
-              data = complete_data, Hess = TRUE)
 model_1 <- polr(rating ~ depth + morphotype + mean_WTMP + chl_1week, #+ morphotype * mean_WTMP + morphotype * depth + depth * mean_WTMP + depth * morphotype * mean_WTMP, 
-                data = complete_data, Hess = TRUE)
-model_2 <- polr(rating ~ depth + morphotype + mean_WTMP + chl_2week, #+ morphotype * mean_WTMP + morphotype * depth + depth * mean_WTMP + depth * morphotype * mean_WTMP, 
                 data = complete_data, Hess = TRUE)
 
 # GET SUMMARY WITH P-VALUES
-summary(model_n)
 summary(model_1)
-summary(model_2)
 
 # MODEL OUTPUTS
 coefficient_table <- coef(summary(model_1))
@@ -637,7 +658,7 @@ p_values <- pnorm(abs(coefficient_table[, "t value"]), lower.tail = FALSE) * 2
 cbind(coefficient_table, "p value" = p_values)
 
 # ODDS RATIOS
-exp(coef(model_1))
+exp(coef(model_2))
 # For morphotype Sym, this will be ~2.73 meaning:
 # Sym morphotype has about 2.732 times higher odds of being in a higher rank category compared to Apo morphotype
 
@@ -677,6 +698,78 @@ summary(whoi_model)
 # Site	  mean temp   Warming Rate	  Significance  20-Year Warming 
 # NB	    12.1        0.0099°C/year	  p = 0.00589	  ~0.20°C
 # WHOI	  12.3        0.0621°C/year	  p < 2e-16	    ~1.24°C
+
+
+# MAP  --------------------------------------------------------------------
+
+#Input google key
+api_key <- ggmap::register_google(key="AIzaSyCCnby--k4d03DNhfdcpUvo8Hy4oNAvclw")
+
+#Set map parameters
+map <- ggmap(get_googlemap(center = c(lon=-71.35, lat=41.455), maptype = "satellite", zoom=12))  + 
+  geom_segment(aes(x = -71.39, xend = -71.39 + (2*0.01198), y = 41.378, yend = 41.378), color = "white", linewidth = 1.5) +  # Scale bar - 1km = 0.01198 
+  annotate("text", y = 41.382, x = -71.39 + 0.01198, label = "2 km", color = "white", size = 4) +
+  geom_rect(aes(xmin = -71.35, xmax = -71.45, 
+                ymin = 41.4, ymax = 41.5),
+            fill = "yellow", color = "yellow", alpha = 0.01, linewidth = 0.8) +
+  geom_point(aes(y = 41.477764, x = -71.359622), color="#cc0000", size = 4) + 
+  labs(x = "Longitude", y = "Latitude") + # Renaming axes 
+  annotation_north_arrow(which_north = "true", height = unit(1,"cm"), width = unit(1,"cm"), 
+                         pad_x = unit(6, "cm"), pad_y = unit(0.2, "cm"),
+                         style = north_arrow_fancy_orienteering(text_col = 'white',
+                                                                line_col = 'white',
+                                                                fill = 'white'))
+map
+
+# Create the inset map for the northeast
+inset_map <- get_googlemap(center = c(lon= -70.71,lat=41.7354320893667),
+                           maptype = "satellite", zoom = 9)
+
+# indicate location of study site 
+site1 <- data.frame(lat=c(41.47822634827611), lon=c(-71.35966383812969))
+site2 <- data.frame(lat=c(41.527106), lon=c(-70.675863))
+
+# Create a ggplot object for the inset
+inset_plot <- ggmap(inset_map) + 
+  # Add black border around the entire inset map
+  geom_rect(aes(xmin = -Inf, xmax = Inf, 
+                ymin = -Inf, ymax = Inf),
+            fill = NA, color = "black", linewidth = 2) +
+  # geom_point(data=site1, aes(x=lon, y=lat), color="orange", size=4, shape=17) +
+  geom_point(data=site2, aes(x=lon, y=lat), color="#FF6600", size=4, shape=17) +
+  geom_rect(aes(xmin = -71.35, xmax = -71.45, 
+                ymin = 41.4, ymax = 41.5),
+            fill = "yellow", color = "yellow", alpha = 0.01, linewidth = 0.8)
+
+# Save both plots as separate objects
+map_grob <- ggplotGrob(map)
+
+# Save combined plot to a file using a PDF device
+pdf(file = "TLAP_Quad_fig1_map.pdf", width = 6, height = 6) # Adjust dimensions as needed
+
+# Combine the plots
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 1)))
+
+# Draw the main map
+grid.draw(map_grob)
+
+# Add the inset at specified coordinates
+print(inset_plot + theme_void(), vp = viewport(x = 0.8, y = 0.3, width = 0.35, height = 0.35)) # Adjust x, y, width, and height
+
+# Close the graphics device
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
 
 # NOT USING: GAANT ------------------------------------------------------------------
 winter_weeks <- winter_dates %>% 
