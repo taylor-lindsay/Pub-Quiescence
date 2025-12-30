@@ -12,7 +12,7 @@
 # DONE: SET UP  -----------------------------------------------------------------
 
 # WORKING DIRECTORY 
-setwd('~/Desktop/GITHUB/Draft_Quiescence/')
+setwd('~/Desktop/GITHUB/Pub-Quiescence/')
 
 # LIBRARIES
 library(tidyverse)
@@ -28,6 +28,11 @@ library(MASS) # for ordinal stats
 library(scales) # for ggplot scale sig figs 
 library(lme4)
 library("lmerTest")
+library(ggmap) #map
+library(ggspatial) #map
+library(grid) #map
+library(ggpmisc) #equation & pvalue 
+
 
 # DONE: BUOY Water Temp --------------------------------------------------------------
 
@@ -128,6 +133,28 @@ buoy_daily <- buoy %>%
   group_by(DD, MM, YY, month_day, Site, date) %>%
   summarise(mean_WTMP = mean(WTMP)) 
 
+# RELABEL FACETS 
+new_labels <- c("Newport" = "RI","WHOI" = "MA")
+
+# PLOT 20 YEARS
+plot_temp_long <- ggplot(buoy_daily, aes(x=date, y=mean_WTMP)) + 
+  geom_line() + 
+  geom_smooth(method = "lm") + 
+  facet_wrap(~Site, labeller = labeller(Site = new_labels)) +
+  theme_bw() + 
+  labs(x="Date", y="Mean Water Temperature (˚C)") +
+  stat_poly_eq(
+    formula = y ~ x,
+    aes(label = paste(after_stat(eq.label), after_stat(rr.label), 
+                      after_stat(p.value.label), sep = "~~~")),
+    label.x = "right",
+    label.y = "top",
+    size = 3  # Adjust size if needed
+  )
+
+# SAVE 
+ggsave("FIGS2_20yr.jpg", plot = plot_temp_long, path = 'FIGURES/', width = 7, height =6)
+
 # CREATE FILE FOR X AXIS LABELS  
 first_of_month <- unique(buoy_daily$month_day[grepl("-01$", buoy_daily$month_day)])
 
@@ -156,6 +183,77 @@ ggplot(hobo_temp, aes(x=datetime, y=temp, color = depth)) +
 hobo_temp_mean <- hobo_temp %>%
   group_by(depth, month_day) %>%
   summarise(mean_WTMP = mean(temp, na.rm = TRUE)) 
+
+
+# CHL ---------------------------------------------------------------------
+# https://coastwatch.pfeg.noaa.gov/erddap/griddap/noaacwNPPN20S3ASCIDINEOF2kmDaily.html 
+# 41.5 - 41.4
+# -71.45 - -71.35
+
+chl <- read.csv("Temp_Data/NOAA_ERDAP_CHL.csv") 
+
+chl <- chl %>%
+  filter(chlor_a != "NaN") %>%
+  filter(chlor_a != "mg m^-3") %>% #remove units row %>%
+  mutate(chlor_a = as.numeric(chlor_a))
+
+# Using lubridate (more flexible)
+chl$date <- ymd_hms(chl$time) %>% as.Date()
+
+chl_smaller <- chl %>%
+  filter(latitude >= 41.4, latitude <= 41.5, longitude >= -71.35, longitude <= -71.45) %>% 
+  filter(date < "2025-04-27") %>% filter(date > "2025-01-01") 
+
+ggplot(chl_smaller, aes(x=date, y=chlor_a, color=latitude)) +
+  geom_point() 
+
+chl_mean <- chl_smaller %>%
+  dplyr::select(date,latitude,longitude,chlor_a) %>%
+  group_by(date) %>%
+  summarise(mean= mean(chlor_a, na.rm=T), sd =sd(chlor_a, na.rm=T)) %>%
+  ungroup()
+
+# write week columns 
+chl_mean <- chl_mean %>%
+  mutate(
+    week1 = case_when(
+      date >= as.Date("2025-01-09") & date <= as.Date("2025-01-16") ~ as.Date("2025-01-16"),
+      date >= as.Date("2025-01-23") & date <= as.Date("2025-01-30") ~ as.Date("2025-01-30"),
+      date >= as.Date("2025-02-5") & date <= as.Date("2025-02-12") ~ as.Date("2025-02-12"),
+      date >= as.Date("2025-02-19") & date <= as.Date("2025-02-26") ~ as.Date("2025-02-26"),
+      date >= as.Date("2025-03-05") & date <= as.Date("2025-03-12") ~ as.Date("2025-03-12"),
+      date >= as.Date("2025-03-19") & date <= as.Date("2025-03-26") ~ as.Date("2025-03-26"),
+      date >= as.Date("2025-04-03") & date <= as.Date("2025-04-10") ~ as.Date("2025-04-10"),
+      date >= as.Date("2025-04-19") & date <= as.Date("2025-04-26") ~ as.Date("2025-04-26"),
+      TRUE ~ as.Date(NA)  # NA for all other dates
+    )) %>%
+      mutate(
+        week2 = case_when(
+          date >= as.Date("2025-01-02") & date <= as.Date("2025-01-16") ~ as.Date("2025-01-16"),
+          date >= as.Date("2025-01-16") & date <= as.Date("2025-01-30") ~ as.Date("2025-01-30"),
+          date >= as.Date("2025-01-29") & date <= as.Date("2025-02-12") ~ as.Date("2025-02-12"),
+          date >= as.Date("2025-02-12") & date <= as.Date("2025-02-26") ~ as.Date("2025-02-26"),
+          date >= as.Date("2025-02-26") & date <= as.Date("2025-03-12") ~ as.Date("2025-03-12"),
+          date >= as.Date("2025-03-12") & date <= as.Date("2025-03-26") ~ as.Date("2025-03-26"),
+          date >= as.Date("2025-03-27") & date <= as.Date("2025-04-10") ~ as.Date("2025-04-10"),
+          date >= as.Date("2025-04-12") & date <= as.Date("2025-04-26") ~ as.Date("2025-04-26"),
+          TRUE ~ as.Date(NA)  # NA for all other dates
+        ))
+
+# PLOT
+
+plot_chl <- ggplot(chl_mean, aes(x=date, y=mean)) +
+  geom_point(size=2, color="darkgreen") +
+  geom_line() +
+  geom_ribbon(aes(ymin = mean - sd, ymax = mean + sd), alpha = 0.3, fill="darkgreen") + ###
+  theme_bw() +
+  scale_x_date(
+    date_labels = "%m-%d", 
+    breaks = as.Date(paste0("2025-", first_of_month))  # Your breaks with fake year
+  ) +
+  labs(x="Month & Day", y = expression(paste("Mean Chlorophyll ", italic("a"), " (mg m"^{-3}, ")")))
+
+ggsave("plot_chl.jpg", plot = plot_chl, path = 'FIGURES/', width = 8, height =5)
 
 # DONE: FIG1. NEWPORT ENVIRO 2025 ---------------------------------------------------------
 
@@ -219,8 +317,13 @@ temp_boxplot
 g_treat1 <- plot_grid(temp_boxplot, temps_line,
                       ncol = 2, align = "h", rel_widths = c(1, 3),
                       labels = c("A", "B"), label_size = 12, label_fontface = "bold",  label_x = 0, label_y = 1)
+
+g_treat2 <- plot_grid(g_treat1, plot_chl,
+                      ncol = 1,  rel_heights = c(1, 0.7),
+                      labels = c("", "C"), label_size = 12, label_fontface = "bold",  label_x = 0, label_y = 1)
+
 # SAVE FIG 1
-ggsave("FIG1_enviro_2025.jpg", plot = g_treat1, path = 'FIGURES/', width = 8, height = 6)
+ggsave("FIG1_enviro_2025.jpg", plot = g_treat2, path = 'FIGURES/', width = 8, height = 8)
 
 # DONE: FIG 2. 3 YEAR COMPARISON ---------------------------------------------------
 
@@ -414,7 +517,7 @@ quies_all <- ggplot(pres_all, aes(x = Date, y = percent_q, color=morphotype)) +
         legend.background = element_rect(color = "black", fill = "white")) 
 quies_all
 
-ggsave("FIGS1_quies_all.jpg", plot = quies_all, path = 'FIGURES/', width = 5, height = 4)
+ggsave("FIGS3_quies_all.jpg", plot = quies_all, path = 'FIGURES/', width = 5, height = 4)
 
 #### PLOT BY MORPHOTYPE
 
@@ -472,6 +575,21 @@ ggsave("FIG3_quiescence.jpg", plot = plot_quiescence2, path = 'FIGURES/', width 
 
 # STATS - ORDINAL MODEL -----------------------------------------------------------
 
+#calculate means for chl data 
+chl_week_means1 <- chl_mean %>%
+  filter(!is.na(week1)) %>%
+  group_by(week1) %>%
+  summarise(chl_1week= mean(mean, na.rm=T)) %>%
+  ungroup() %>%
+  mutate(Date=week1) %>% dplyr::select(!week1)
+  
+chl_week_means2 <- chl_mean %>%
+  filter(!is.na(week2)) %>%
+  group_by(week2) %>%
+  summarise(chl_2week= mean(mean, na.rm=T)) %>%
+  ungroup() %>%
+  mutate(Date=week2) %>% dplyr::select(!week2)
+  
 # GET ONE VALUE FOR EACH DEEP AND SHALLOW, ONE WEEK LEADING UP TO THE SAMPLING DAY
 # IMPORT WEEKLY DATA  
 pre_temp <- read.csv("Temp_Data/temp_hobos/HOBOS_winter25_week.csv")
@@ -502,6 +620,8 @@ mean_7d <- pre_temp_long %>%
 
 # ADD BACK TO RAW DATA 
 raw <- full_join(raw, mean_7d)
+raw <- full_join(raw, chl_week_means1)
+raw <- full_join(raw, chl_week_means2)
 
 # COMBINE WEEK MEAN WITH DATA 
 temp_quies <- full_join(mean_7d, pres_all)
@@ -513,7 +633,6 @@ ggplot(temp_quies, aes(x = mean_WTMP, y = percent_q, color=morphotype)) +
   theme_bw()
   #ylim(-0.2,7.5)
 
-
 ### ORDINAL STATS 
 
 # ENSURE RANKED VARIABLE IS PROPERLY ORDERED 
@@ -522,26 +641,30 @@ raw$rating <- factor(raw$rating, levels = c(0, 1, 2, 3), ordered = TRUE)
 # CHECK STRUCTURE 
 str(raw$rating)
 
+complete_data <- raw %>%
+  dplyr::select(rating, depth, morphotype, mean_WTMP, chl_1week, chl_2week) %>%
+  drop_na()
+
 # RUN MODEL
-model <- polr(rating ~ depth + morphotype + mean_WTMP, #+ morphotype * mean_WTMP + morphotype * depth + depth * mean_WTMP + depth * morphotype * mean_WTMP, 
-              data = raw, Hess = TRUE)
+model_1 <- polr(rating ~ depth + morphotype + mean_WTMP + chl_1week, #+ morphotype * mean_WTMP + morphotype * depth + depth * mean_WTMP + depth * morphotype * mean_WTMP, 
+                data = complete_data, Hess = TRUE)
 
 # GET SUMMARY WITH P-VALUES
-summary(model)
+summary(model_1)
 
 # MODEL OUTPUTS
-coefficient_table <- coef(summary(model))
+coefficient_table <- coef(summary(model_1))
 p_values <- pnorm(abs(coefficient_table[, "t value"]), lower.tail = FALSE) * 2
 cbind(coefficient_table, "p value" = p_values)
 
 # ODDS RATIOS
-exp(coef(model))
+exp(coef(model_1))
 # For morphotype Sym, this will be ~2.73 meaning:
 # Sym morphotype has about 2.732 times higher odds of being in a higher rank category compared to Apo morphotype
 
 # COMPARE AGAINST NULL MODEL
-null_model <- polr(rating ~ 1, data = raw, Hess = TRUE)
-anova(null_model, model) # depth + morphotype is not more important than null 
+null_model <- polr(rating ~ 1, data = complete_data, Hess = TRUE)
+anova(null_model, model_1) # depth + morphotype is not more important than null 
 
 # STATS - RI vs. MA TEMPS----------------------------------------------
 
@@ -575,6 +698,78 @@ summary(whoi_model)
 # Site	  mean temp   Warming Rate	  Significance  20-Year Warming 
 # NB	    12.1        0.0099°C/year	  p = 0.00589	  ~0.20°C
 # WHOI	  12.3        0.0621°C/year	  p < 2e-16	    ~1.24°C
+
+
+# MAP  --------------------------------------------------------------------
+
+#Input google key
+api_key <- ggmap::register_google(key="AIzaSyCCnby--k4d03DNhfdcpUvo8Hy4oNAvclw")
+
+#Set map parameters
+map <- ggmap(get_googlemap(center = c(lon=-71.35, lat=41.455), maptype = "satellite", zoom=12))  + 
+  geom_segment(aes(x = -71.39, xend = -71.39 + (2*0.01198), y = 41.378, yend = 41.378), color = "white", linewidth = 1.5) +  # Scale bar - 1km = 0.01198 
+  annotate("text", y = 41.382, x = -71.39 + 0.01198, label = "2 km", color = "white", size = 4) +
+  geom_rect(aes(xmin = -71.35, xmax = -71.45, 
+                ymin = 41.4, ymax = 41.5),
+            fill = "yellow", color = "yellow", alpha = 0.01, linewidth = 0.8) +
+  geom_point(aes(y = 41.477764, x = -71.359622), color="#cc0000", size = 4) + 
+  labs(x = "Longitude", y = "Latitude") + # Renaming axes 
+  annotation_north_arrow(which_north = "true", height = unit(1,"cm"), width = unit(1,"cm"), 
+                         pad_x = unit(6, "cm"), pad_y = unit(0.2, "cm"),
+                         style = north_arrow_fancy_orienteering(text_col = 'white',
+                                                                line_col = 'white',
+                                                                fill = 'white'))
+map
+
+# Create the inset map for the northeast
+inset_map <- get_googlemap(center = c(lon= -70.71,lat=41.7354320893667),
+                           maptype = "satellite", zoom = 9)
+
+# indicate location of study site 
+site1 <- data.frame(lat=c(41.47822634827611), lon=c(-71.35966383812969))
+site2 <- data.frame(lat=c(41.527106), lon=c(-70.675863))
+
+# Create a ggplot object for the inset
+inset_plot <- ggmap(inset_map) + 
+  # Add black border around the entire inset map
+  geom_rect(aes(xmin = -Inf, xmax = Inf, 
+                ymin = -Inf, ymax = Inf),
+            fill = NA, color = "black", linewidth = 2) +
+  # geom_point(data=site1, aes(x=lon, y=lat), color="orange", size=4, shape=17) +
+  geom_point(data=site2, aes(x=lon, y=lat), color="#FF6600", size=4, shape=17) +
+  geom_rect(aes(xmin = -71.35, xmax = -71.45, 
+                ymin = 41.4, ymax = 41.5),
+            fill = "yellow", color = "yellow", alpha = 0.01, linewidth = 0.8)
+
+# Save both plots as separate objects
+map_grob <- ggplotGrob(map)
+
+# Save combined plot to a file using a PDF device
+pdf(file = "FIGURES/FIGS1_map.pdf", width = 6, height = 6) # Adjust dimensions as needed
+
+# Combine the plots
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 1)))
+
+# Draw the main map
+grid.draw(map_grob)
+
+# Add the inset at specified coordinates
+print(inset_plot + theme_void(), vp = viewport(x = 0.8, y = 0.3, width = 0.35, height = 0.35)) # Adjust x, y, width, and height
+
+# Close the graphics device
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
 
 # NOT USING: GAANT ------------------------------------------------------------------
 winter_weeks <- winter_dates %>% 
